@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	backoff "github.com/cenkalti/backoff"
 	core "github.com/flipkart-incubator/go-dmux/core"
 )
 
@@ -24,12 +25,17 @@ type HTTPSink struct {
 
 // HTTPSinkConf  holds config to HTTPSink
 type HTTPSinkConf struct {
-	Endpoint                    string              `json:"endpoint"` //http://destinationHost:port/prefixPath
-	Timeout                     core.Duration       `json:"timeout"`
-	RetryInterval               core.Duration       `json:"retry_interval"`
-	Headers                     []map[string]string `json:"headers"`
-	Method                      string              `json:"method"`                    //GET,POST,PUT,DELETE
-	NonRetriableHttpStatusCodes []int               `json:nonRetriableHttpStatusCodes` //this is for handling customized errorCode thrown by sink
+	Endpoint                        string              `json:"endpoint"` //http://destinationHost:port/prefixPath
+	Timeout                         core.Duration       `json:"timeout"`
+	RetryInterval                   core.Duration       `json:"retry_interval"`
+	RetryBackoffEnabled             bool                `json:"retry_backoff_enabled"`
+	RetryBackoffInitialInterval     core.Duration       `json:"retry_backoff_initial_interval"`
+	RetryBackoffMultiplier          float64             `json:"retry_backoff_multiplier"`
+	RetryBackoffRandomizationFactor float64             `json:"retry_backoff_randomization_factor"`
+	RetryBackoffMaxInterval         core.Duration       `json:"retry_backoff_max_interval"`
+	Headers                         []map[string]string `json:"headers"`
+	Method                          string              `json:"method"`                    //GET,POST,PUT,DELETE
+	NonRetriableHttpStatusCodes     []int               `json:nonRetriableHttpStatusCodes` //this is for handling customized errorCode thrown by sink
 
 }
 
@@ -190,10 +196,48 @@ func (h *HTTPSink) retryPost(msg interface{}, state bool,
 
 }
 
+func (h *HTTPSink) configureExponentialBackoff() *backoff.ExponentialBackOff {
+	// Create a new exponential backoff for each message retry
+	expBackoff := backoff.NewExponentialBackOff()
+
+	// Use the RetryBackoffInitialInterval if it is set, else use the default value i.e 500 milliseconds
+	if h.conf.RetryBackoffInitialInterval.Duration > 0 {
+		expBackoff.InitialInterval = h.conf.RetryBackoffInitialInterval.Duration
+	}
+
+	// Use RetryBackoffMultiplier if it is set, else use the default value i.e 1.5
+	if h.conf.RetryBackoffMultiplier > 0 {
+		expBackoff.Multiplier = h.conf.RetryBackoffMultiplier
+	}
+
+	// Use RetryBackoffRandomizationFactor if it is set, else use the default value i.e 0.5
+	if h.conf.RetryBackoffRandomizationFactor > 0 {
+		expBackoff.RandomizationFactor = h.conf.RetryBackoffRandomizationFactor
+	}
+
+	// Use RetryBackoffMaxInterval if it is set, else use the default value i.e 60 seconds
+	if h.conf.RetryBackoffMaxInterval.Duration > 0 {
+		expBackoff.MaxInterval = h.conf.RetryBackoffMaxInterval.Duration
+	}
+
+	// No max elapsed time - we want indefinite retries
+	expBackoff.MaxElapsedTime = 0
+
+	return expBackoff
+}
+
 func (h *HTTPSink) retryExecute(method, url string, headers map[string]string,
 	data []byte, respEval func(respCode int, nonRetriableHttpStatusCodes []int) (error, bool),
 	retries int, sidelineResponseCodes []int) (bool, error) {
 	var count = 0
+
+	// Create a new backoff for each message to ensure each message
+	// has its own independent retry sequence starting from the initial interval
+	var expBackoff *backoff.ExponentialBackOff
+	if h.conf.RetryBackoffEnabled {
+		expBackoff = h.configureExponentialBackoff()
+	}
+
 	for {
 		status, respCode := h.execute(method, url, headers, bytes.NewReader(data))
 		if status {
@@ -208,9 +252,23 @@ func (h *HTTPSink) retryExecute(method, url string, headers map[string]string,
 			}
 		}
 		log.Printf("retry in execute %s \t %s \n", method, url)
-		time.Sleep(h.conf.RetryInterval.Duration)
-	}
 
+		// Determine the next delay
+		var nextDelay time.Duration
+		if expBackoff != nil {
+			nextDelay = expBackoff.NextBackOff()
+			// Since we set MaxElapsedTime to 0, backoff. Stop should never be returned
+			// But handling it just in case of library behavior change
+			if nextDelay == backoff.Stop {
+				log.Printf("backoff.Stop returned, using max interval %s", expBackoff.MaxInterval)
+				nextDelay = expBackoff.MaxInterval
+			}
+		} else {
+			// Use the configured fixed retry interval
+			nextDelay = h.conf.RetryInterval.Duration
+		}
+		time.Sleep(nextDelay)
+	}
 }
 
 func (h *HTTPSink) pre(hook HTTPSinkHook, msg interface{}, url string) bool {

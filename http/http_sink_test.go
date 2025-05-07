@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"testing"
 )
 
 type GetOrderMsg struct {
@@ -47,6 +48,22 @@ func (g GetOrderMsg) GetHeaders(conf HTTPSinkConf) map[string]string {
 
 func (g GetOrderMsg) GetURLPath() string {
 	return "/path/" + g.orderID
+}
+
+func (g GetOrderMsg) GetURL(endpoint string) string {
+	return endpoint + "/path/" + g.orderID
+}
+
+func (g GetOrderMsg) GetDebugPath() string {
+	return "/path/" + g.orderID
+}
+
+func (g GetOrderMsg) BatchURL(msgs []interface{}, endpoint string, version int) string {
+	return endpoint + "/batch" + g.orderID
+}
+
+func (g GetOrderMsg) BatchPayload(msgs []interface{}, version int) []byte {
+	return []byte("batch payload")
 }
 
 type PrintHook struct{}
@@ -98,6 +115,18 @@ func parseConf(path string) HTTPSinkConf {
 	json.Unmarshal(raw, &conf)
 
 	return conf
+}
+
+// Tested HTTP Sink with Retry Backoff using the below test case
+// Increase the retry count from 3 to 10 and see the delay in retries
+func TestHTTPSinkWithRetryBackoff(t *testing.T) {
+	log.Println("running test TestHTTPSinkWithRetryBackoff")
+	conf := parseConf("sink_test.json")
+	hook := new(PrintHook)
+	sink := GetHTTPSink(10, conf)
+	sink.RegisterHook(hook)
+	msg := GetOrderMsg{"123"}
+	sink.Consume(msg, 3, nil)
 }
 
 // func TestHTTPSink(t *testing.T) {
