@@ -34,8 +34,8 @@ type HTTPSinkConf struct {
 	RetryBackoffRandomizationFactor float64             `json:"retry_backoff_randomization_factor"`
 	RetryBackoffMaxInterval         core.Duration       `json:"retry_backoff_max_interval"`
 	Headers                         []map[string]string `json:"headers"`
-	Method                          string              `json:"method"`                    //GET,POST,PUT,DELETE
-	NonRetriableHttpStatusCodes     []int               `json:nonRetriableHttpStatusCodes` //this is for handling customized errorCode thrown by sink
+	Method                          string              `json:"method"`                      //GET,POST,PUT,DELETE
+	NonRetriableHttpStatusCodes     []int               `json:"nonRetriableHttpStatusCodes"` //this is for handling customized errorCode thrown by sink
 
 }
 
