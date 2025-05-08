@@ -2,11 +2,13 @@
   "endpoint":"http://google.com",
   "timeout": "2s",
   "retry_interval": "50ms",
-  "retry_backoff_enabled": true,
-  "retry_backoff_initial_interval": "50ms",
-  "retry_backoff_multiplier": 2.0,
-  "retry_backoff_randomization_factor": 0.5,
-  "retry_backoff_max_interval": "5s",
+  "retry_backoff": {
+    "enabled": true,
+    "initial_interval": "50ms",
+    "multiplier": 2.0,
+    "randomization_factor": 0.5,
+    "max_interval": "5s"
+  },
   "method": "GET",
   "headers": {
     "X_CLIENT_ID": "go-dumx"

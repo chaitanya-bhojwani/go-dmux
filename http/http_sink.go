@@ -25,18 +25,22 @@ type HTTPSink struct {
 
 // HTTPSinkConf  holds config to HTTPSink
 type HTTPSinkConf struct {
-	Endpoint                        string              `json:"endpoint"` //http://destinationHost:port/prefixPath
-	Timeout                         core.Duration       `json:"timeout"`
-	RetryInterval                   core.Duration       `json:"retry_interval"`
-	RetryBackoffEnabled             bool                `json:"retry_backoff_enabled"`
-	RetryBackoffInitialInterval     core.Duration       `json:"retry_backoff_initial_interval"`
-	RetryBackoffMultiplier          float64             `json:"retry_backoff_multiplier"`
-	RetryBackoffRandomizationFactor float64             `json:"retry_backoff_randomization_factor"`
-	RetryBackoffMaxInterval         core.Duration       `json:"retry_backoff_max_interval"`
-	Headers                         []map[string]string `json:"headers"`
-	Method                          string              `json:"method"`                      //GET,POST,PUT,DELETE
-	NonRetriableHttpStatusCodes     []int               `json:"nonRetriableHttpStatusCodes"` //this is for handling customized errorCode thrown by sink
+	Endpoint                    string              `json:"endpoint"` //http://destinationHost:port/prefixPath
+	Timeout                     core.Duration       `json:"timeout"`
+	RetryInterval               core.Duration       `json:"retry_interval"`
+	RetryBackoff                RetryBackoffConf    `json:"retry_backoff"`
+	Headers                     []map[string]string `json:"headers"`
+	Method                      string              `json:"method"`                      //GET,POST,PUT,DELETE
+	NonRetriableHttpStatusCodes []int               `json:"nonRetriableHttpStatusCodes"` //this is for handling customized errorCode thrown by sink
+}
 
+// RetryBackoffConf holds exponential backoff retry configuration
+type RetryBackoffConf struct {
+	Enabled             bool          `json:"enabled"`
+	InitialInterval     core.Duration `json:"initial_interval"`
+	Multiplier          float64       `json:"multiplier"`
+	RandomizationFactor float64       `json:"randomization_factor"`
+	MaxInterval         core.Duration `json:"max_interval"`
 }
 
 // HTTPSinkHook is added for Clien to attach pre and post porcessing logic
@@ -201,23 +205,23 @@ func (h *HTTPSink) configureExponentialBackoff() *backoff.ExponentialBackOff {
 	expBackoff := backoff.NewExponentialBackOff()
 
 	// Use the RetryBackoffInitialInterval if it is set, else use the default value i.e 500 milliseconds
-	if h.conf.RetryBackoffInitialInterval.Duration > 0 {
-		expBackoff.InitialInterval = h.conf.RetryBackoffInitialInterval.Duration
+	if h.conf.RetryBackoff.InitialInterval.Duration > 0 {
+		expBackoff.InitialInterval = h.conf.RetryBackoff.InitialInterval.Duration
 	}
 
 	// Use RetryBackoffMultiplier if it is set, else use the default value i.e 1.5
-	if h.conf.RetryBackoffMultiplier > 0 {
-		expBackoff.Multiplier = h.conf.RetryBackoffMultiplier
+	if h.conf.RetryBackoff.Multiplier > 0 {
+		expBackoff.Multiplier = h.conf.RetryBackoff.Multiplier
 	}
 
 	// Use RetryBackoffRandomizationFactor if it is set, else use the default value i.e 0.5
-	if h.conf.RetryBackoffRandomizationFactor > 0 {
-		expBackoff.RandomizationFactor = h.conf.RetryBackoffRandomizationFactor
+	if h.conf.RetryBackoff.RandomizationFactor > 0 {
+		expBackoff.RandomizationFactor = h.conf.RetryBackoff.RandomizationFactor
 	}
 
 	// Use RetryBackoffMaxInterval if it is set, else use the default value i.e 60 seconds
-	if h.conf.RetryBackoffMaxInterval.Duration > 0 {
-		expBackoff.MaxInterval = h.conf.RetryBackoffMaxInterval.Duration
+	if h.conf.RetryBackoff.MaxInterval.Duration > 0 {
+		expBackoff.MaxInterval = h.conf.RetryBackoff.MaxInterval.Duration
 	}
 
 	// No max elapsed time - we want indefinite retries
@@ -234,7 +238,7 @@ func (h *HTTPSink) retryExecute(method, url string, headers map[string]string,
 	// Create a new backoff for each message to ensure each message
 	// has its own independent retry sequence starting from the initial interval
 	var expBackoff *backoff.ExponentialBackOff
-	if h.conf.RetryBackoffEnabled {
+	if h.conf.RetryBackoff.Enabled {
 		expBackoff = h.configureExponentialBackoff()
 	}
 
