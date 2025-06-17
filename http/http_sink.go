@@ -237,10 +237,8 @@ func (h *HTTPSink) retryExecute(method, url string, headers map[string]string,
 
 	// Create a new backoff for each message to ensure each message
 	// has its own independent retry sequence starting from the initial interval
-	log.Printf("retryExecute with backoff %s \t %s \n", method, url)
 	var expBackoff *backoff.ExponentialBackOff
 	if h.conf.RetryBackoff.Enabled {
-		log.Printf("retry backoff enabled %s \t %s \n", method, url)
 		expBackoff = h.configureExponentialBackoff()
 	}
 
@@ -268,11 +266,12 @@ func (h *HTTPSink) retryExecute(method, url string, headers map[string]string,
 				log.Printf("backoff.Stop returned, using max interval %s", expBackoff.MaxInterval)
 				nextDelay = expBackoff.MaxInterval
 			}
+			log.Printf("retryExecute with backoff nextDelay %s \t %s \t %s \n", method, url, nextDelay)
 		} else {
 			// Use the configured fixed retry interval
 			nextDelay = h.conf.RetryInterval.Duration
+			log.Printf("retryExecute nextDelay %s \t %s \t %s \n", method, url, nextDelay)
 		}
-		log.Printf("retryExecute with backoff nextDelay %s \t %s \t %s \n", method, url, nextDelay)
 		time.Sleep(nextDelay)
 	}
 }
