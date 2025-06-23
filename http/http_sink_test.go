@@ -5,9 +5,12 @@ import (
 	"hash/fnv"
 	"io/ioutil"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 type GetOrderMsg struct {
@@ -66,13 +69,21 @@ func (g GetOrderMsg) BatchPayload(msgs []interface{}, version int) []byte {
 	return []byte("batch payload")
 }
 
-type PrintHook struct{}
-
-func (p *PrintHook) PreHTTPCall(msg interface{}) {
-	// do nothing
+// Use a custom hook that records retry timestamps
+type retryRecord struct {
+	attempts []time.Time
 }
-func (p *PrintHook) PostHTTPCall(msg interface{}, success bool) {
-	log.Println(msg, success)
+
+type testHook struct {
+	record *retryRecord
+}
+
+func (t *testHook) PreHTTPCall(msg interface{}) {
+	t.record.attempts = append(t.record.attempts, time.Now())
+}
+
+func (t *testHook) PostHTTPCall(msg interface{}, sucess bool) {
+	log.Println("PostHTTPCall:", msg, sucess)
 }
 
 type FileSource struct {
@@ -117,46 +128,42 @@ func parseConf(path string) HTTPSinkConf {
 	return conf
 }
 
-// Tested HTTP Sink with Retry Backoff using the below test case
-// Increase the retry count from 3 to 10 and see the delay in retries
 func TestHTTPSinkWithRetryBackoff(t *testing.T) {
 	log.Println("running test TestHTTPSinkWithRetryBackoff")
+
+	// Setup a test HTTP server that fails with 500 status code
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+
+	defer server.Close()
+
+	// Override conf endpoint to use test server
 	conf := parseConf("sink_test.json")
-	hook := new(PrintHook)
+	conf.Endpoint = server.URL
+
+	record := &retryRecord{attempts: make([]time.Time, 0)}
+
+	hook := &testHook{record: record}
 	sink := GetHTTPSink(10, conf)
 	sink.RegisterHook(hook)
 	msg := GetOrderMsg{"123"}
+
+	startTime := time.Now()
 	sink.Consume(msg, 3, nil)
+	totalTime := time.Since(startTime)
+
+	// Validate that the hook was called
+	if len(record.attempts) < 1 {
+		t.Errorf("Expected at least 1 hook call, got %d", len(record.attempts))
+	}
+
+	// Validate that the total execution time indicates multiple retries with backoff
+	// With 3 retries and exponential backoff starting at ~300ms, total time should be > 1 second
+	expectedMinTime := 1 * time.Second
+	if totalTime < expectedMinTime {
+		t.Errorf("Expected total execution time to be at least %v (indicating retries with backoff), but got %v", expectedMinTime, totalTime)
+	}
+
+	log.Printf("Total execution time: %v (indicating successful retry with exponential backoff)", totalTime)
 }
-
-// func TestHTTPSink(t *testing.T) {
-// 	log.Println("running test TestHTTPSink")
-// 	hook := new(PrintHook)
-// 	conf := parseConf("sink_test.json")
-// 	sink := GetHTTPSink(10, conf)
-// 	sink.RegisterHook(hook)
-// 	msg := GetOrderMsg{"123"}
-// 	sink.Consume(msg)
-// }
-
-// func TestHTTPSinkWithDMux(t *testing.T) {
-// 	log.Println("running test TestHTTPSinkWithDMux")
-// 	hasher := new(OrderMsgHasher)
-// 	d := core.GetHashDistribution(hasher)
-// 	dconf := core.DmuxConf{
-// 		Size:        4,
-// 		SourceQSize: 1,
-// 		SinkQSize:   100,
-// 	}
-// 	dmux := core.GetDmux(dconf, d)
-// 	hook := new(PrintHook)
-// 	source := GetFileSource("sample_order_ids.txt")
-// 	conf := parseConf("sink_test.json")
-// 	sink := GetHTTPSink(dconf.Size, conf)
-// 	sink.RegisterHook(hook)
-//
-// 	dmux.Connect(source, sink)
-// 	dmux.Await(1 * time.Second)
-// 	dmux.Resize(10)
-// 	dmux.Await(1 * time.Second)
-// }
