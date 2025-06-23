@@ -82,8 +82,8 @@ func (t *testHook) PreHTTPCall(msg interface{}) {
 	t.record.attempts = append(t.record.attempts, time.Now())
 }
 
-func (t *testHook) PostHTTPCall(msg interface{}, sucess bool) {
-	log.Println("PostHTTPCall:", msg, sucess)
+func (t *testHook) PostHTTPCall(msg interface{}, success bool) {
+	log.Println("PostHTTPCall:", msg, success)
 }
 
 type FileSource struct {
