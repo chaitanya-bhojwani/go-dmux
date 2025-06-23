@@ -204,22 +204,22 @@ func (h *HTTPSink) configureExponentialBackoff() *backoff.ExponentialBackOff {
 	// Create a new exponential backoff for each message retry
 	expBackoff := backoff.NewExponentialBackOff()
 
-	// Use the RetryBackoffInitialInterval if it is set, else use the default value i.e 500 milliseconds
+	// Uses the RetryBackoffInitialInterval if it is set, else uses the default value i.e 500 milliseconds
 	if h.conf.RetryBackoff.InitialInterval.Duration > 0 {
 		expBackoff.InitialInterval = h.conf.RetryBackoff.InitialInterval.Duration
 	}
 
-	// Use RetryBackoffMultiplier if it is set, else use the default value i.e 1.5
+	// Uses RetryBackoffMultiplier if it is set, else uses the default value i.e 1.5
 	if h.conf.RetryBackoff.Multiplier > 0 {
 		expBackoff.Multiplier = h.conf.RetryBackoff.Multiplier
 	}
 
-	// Use RetryBackoffRandomizationFactor if it is set, else use the default value i.e 0.5
+	// Uses RetryBackoffRandomizationFactor if it is set, else uses the default value i.e 0.5
 	if h.conf.RetryBackoff.RandomizationFactor > 0 {
 		expBackoff.RandomizationFactor = h.conf.RetryBackoff.RandomizationFactor
 	}
 
-	// Use RetryBackoffMaxInterval if it is set, else use the default value i.e 60 seconds
+	// Uses RetryBackoffMaxInterval if it is set, else uses the default value i.e 60 seconds
 	if h.conf.RetryBackoff.MaxInterval.Duration > 0 {
 		expBackoff.MaxInterval = h.conf.RetryBackoff.MaxInterval.Duration
 	}
@@ -235,8 +235,6 @@ func (h *HTTPSink) retryExecute(method, url string, headers map[string]string,
 	retries int, sidelineResponseCodes []int) (bool, error) {
 	var count = 0
 
-	// Create a new backoff for each message to ensure each message
-	// has its own independent retry sequence starting from the initial interval
 	var expBackoff *backoff.ExponentialBackOff
 	if h.conf.RetryBackoff.Enabled {
 		expBackoff = h.configureExponentialBackoff()
